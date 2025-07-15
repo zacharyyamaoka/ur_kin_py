@@ -24,6 +24,13 @@ from compas_fab.utilities import sign -> See function below
 
 """
 
+def solution_description_match(solution_index: int, display_only: dict) -> bool:
+    description = IK_SOLUTION_DESCRIPTION[solution_index]
+    for k, v in display_only.items():
+        if description.get(k) != v:
+            return False
+    return True
+
 IK_SOLUTION_DESCRIPTION = {
     0: {"Shoulder": "Left",  "Wrist": "Up",   "Elbow": "Up"},
     1: {"Shoulder": "Left",  "Wrist": "Up",   "Elbow": "Down"},
@@ -53,7 +60,7 @@ def sign(number):
     """
     return int(int((number) > 0) - int((number) < 0))
 
-def forward_kinematics_offset_wrist(joint_values, params):
+def forward_kinematics_offset_wrist(joint_values, params) -> np.ndarray:
     """Forward kinematics function for offset wrist 6-axis robots.
 
     Parameters
@@ -110,7 +117,7 @@ def forward_kinematics_offset_wrist(joint_values, params):
 
     return frame
 
-def inverse_kinematics_offset_wrist(frame, params, q6_des=0.0):
+def inverse_kinematics_offset_wrist(frame, params, q6_des=0.0) -> list[list[float]]:
     """Inverse kinematics function for offset wrist 6-axis robots.
 
     Parameters
@@ -236,12 +243,12 @@ def inverse_kinematics_offset_wrist(frame, params, q6_des=0.0):
             # wrist 3 joint (q6)
             if fabs(s5) < ZERO_THRESH:
                 q6 = q6_des
-                print("Using q6_des")
+                # print("Using q6_des")
             else:
                 q6 = atan2(sign(s5) * -(T01 * s1 - T11 * c1), sign(s5) * (T00 * s1 - T10 * c1))
             if fabs(q6) < ZERO_THRESH:
                 q6 = 0.0
-                print("q6 below zero threshold")
+                # print("q6 below zero threshold")
 
             if q6 < 0.0:
                 q6 += 2.0 * pi

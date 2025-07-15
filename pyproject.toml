@@ -12,4 +12,6 @@ dependencies = [
   "numpy<2.0",
   "meshcat",
   "pin",
+  "transforms3d",
+  "xacrodoc",
 ]

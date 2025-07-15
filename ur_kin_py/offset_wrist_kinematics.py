@@ -1,98 +1,70 @@
 #!/usr/bin/env python3
 
-
-# ROS
-from geometry_msgs.msg import PoseStamped
-
-# BAM
-from bam_ros_utils.msgs.geometry_converter import matrix_to_pose_stamped, pose_stamped_to_matrix
-from bam_kinematics_dynamics.six_dof.offset_wrist_math import forward_kinematics_offset_wrist, inverse_kinematics_offset_wrist, IK_SOLUTION_DESCRIPTION
-from bam_ros_utils.math.geometry import apply_offset
+from ur_kin_py.offset_wrist_math import forward_kinematics_offset_wrist, inverse_kinematics_offset_wrist, IK_SOLUTION_DESCRIPTION, solution_description_match
+from ur_kin_py.math_utils import xyzrpy_to_matrix
 
 # PYTHON
 import numpy as np
 import copy
 from typing import Tuple, List, Union
 
-"""
 
-Checked on Jun 2 2025
-
-(Python) Analytic IK returned 8 raw solutions:
- Solution 0: [0.      4.93891 0.82615 1.49012 1.4753  3.14159]
- Solution 1: [0.      5.76506 5.45703 2.31627 1.4753  3.14159]
- Solution 2: [0.      4.32189 1.753   4.32189 4.80789 0.     ]
- Solution 3: [0.      6.07489 4.53019 6.07489 4.80789 0.     ]
- Solution 4: [4.02534 3.38522 1.7287  3.22151 1.18822 0.75925]
- Solution 5: [4.02534 5.11392 4.55449 4.95021 1.18822 0.75925]
- Solution 6: [4.02534 3.62578 0.85825 0.70981 5.09497 3.90084]
- Solution 7: [4.02534 4.48403 5.42494 1.56806 5.09497 3.90084]
-
-(C++) Analytic IK returned 8 raw solutions:
-  Solution 0: [0.00000, 4.93891, 0.82615, 1.49012, 1.47530, 3.14159]
-  Solution 1: [0.00000, 5.76506, 5.45703, 2.31627, 1.47530, 3.14159]
-  Solution 2: [0.00000, 4.32189, 1.75300, 4.32189, 4.80789, 0.00000]
-  Solution 3: [0.00000, 6.07489, 4.53019, 6.07489, 4.80789, 0.00000]
-  Solution 4: [4.02534, 3.38522, 1.72870, 3.22151, 1.18822, 0.75925]
-  Solution 5: [4.02534, 5.11392, 4.55449, 4.95021, 1.18822, 0.75925]
-  Solution 6: [4.02534, 3.62578, 0.85825, 0.70981, 5.09497, 3.90084]
-  Solution 7: [4.02534, 4.48403, 5.42494, 1.56806, 5.09497, 3.90084]
-
-"""
 class OffsetWristKinematics():
 
     def __init__(self, dh_params: list,
-                 base_link: str,
-                 lower_limits:list,
-                 upper_limits:list,
+                 lower_limits=[-3.14]*6,
+                 upper_limits=[3.14]*6,
                  joint_reflect=[],
                  use_tool0=True,
                  verbose=False):
         
         self.dh_params = dh_params
-        self.base_link = base_link
-        self.upper_limits = upper_limits
-        self.lower_limits = lower_limits
+        self.upper_limits = np.asarray(upper_limits)
+        self.lower_limits = np.asarray(lower_limits)
+
+        assert len(dh_params) == 6
+        assert len(lower_limits) == 6
+        assert len(upper_limits) == 6
+
         self.joint_reflect = joint_reflect
         self.use_tool0 = use_tool0
         self.verbose = verbose
+
+        self.T_ee_link_tool0 = xyzrpy_to_matrix([0, 0, 0], [-np.pi/2, 0, -np.pi/2])
+        self.T_tool0_ee_link = xyzrpy_to_matrix([0, 0, 0], [np.pi/2, -np.pi/2, 0])
+
 
     def print_v(self, val):
         if self.verbose:
             print(val)
 
-    def reflect(self, q: list) -> list:
-        q_copy = copy.copy(q)
-        for idx in self.joint_reflect:
-            q_copy[idx] *= -1 
-        return q_copy
+    def check_joint_limits(self, q: list[float]) -> bool:
+        q = np.array(q) # type: ignore
+        return bool(np.all((q >= self.lower_limits) & (q <= self.upper_limits)))
     
-    def fk(self, q: list) -> PoseStamped:
+    def fk(self, q: list[float]) -> tuple[bool, np.ndarray]:
 
-        # TODO check if q is within joint limits...
-        q_reflect = self.reflect(q) # careful not to override q
+        if not self.check_joint_limits(q):
+            return False, np.eye(4)
 
-        T = forward_kinematics_offset_wrist(q_reflect, self.dh_params)
-
-        pose = matrix_to_pose_stamped(T, self.base_link)
+        T_base_link_ee_link = forward_kinematics_offset_wrist(q, self.dh_params)
 
         if self.use_tool0:
-            # Transform pose from ee_link to tool0 
-            pose = apply_offset(pose, rpy=[-np.pi/2, 0, -np.pi/2], local=True)
+            T = T_ee_link_tool0 = T_base_link_ee_link @ self.T_ee_link_tool0
+        else:
+            T = T_base_link_ee_link
 
-        return pose
+        return True, T
     
-    def ik(self, pose: PoseStamped, q6_des=0.0) -> Tuple[List[bool], List[List[float]]]:
+    def ik(self, pose_matrix: np.ndarray, q6_des=0.0) -> Tuple[List[bool], List[List[float]]]:
 
-        assert pose.header.frame_id == self.base_link
 
         if self.use_tool0:
-            # Transform pose from tool0 (z sticks out of joint 6) to ee_link
-            pose = apply_offset(pose, rpy=[np.pi/2, -np.pi/2, 0], local=True)
+            T_base_link_tool0 = pose_matrix
+            T_base_link_ee_link = T_base_link_tool0 @ self.T_tool0_ee_link
+            pose_matrix = T_base_link_ee_link
 
-        T = pose_stamped_to_matrix(pose)
-
-        sol_list = inverse_kinematics_offset_wrist(T, self.dh_params, q6_des)
+        sol_list = inverse_kinematics_offset_wrist(pose_matrix, self.dh_params, q6_des)
         wrapped_sol_list = copy.copy(sol_list)
 
         success_list = [False]*8
@@ -129,7 +101,6 @@ class OffsetWristKinematics():
                     sol_wrapped.append(angle_wrapped)
                 
                 if valid:
-                    sol_wrapped = self.reflect(sol_wrapped)
                     wrapped_sol_list[i] = sol_wrapped
                     success_list[i] = True
 
@@ -190,11 +161,22 @@ class OffsetWristKinematics():
 
 
 if __name__ == "__main__":
-    from bam_descriptions import get_robot_params
 
-    rp = get_robot_params('ur')
+    upper_limits = [np.pi, np.pi, np.pi, np.pi, np.pi, np.pi]
+    lower_limits = [-np.pi, -np.pi, -np.pi, -np.pi, -np.pi, -np.pi]
 
-    K = OffsetWristKinematics(rp.dh_list, rp.base_link, rp.lower_limits, rp.upper_limits, verbose=True)
+    UR10_PARAMS = {
+        "d1": 0.1273,
+        "a2": -0.612,
+        "a3": -0.5723,
+        "d4": 0.163941,
+        "d5": 0.1157,
+        "d6": 0.0922,
+    }
+
+    dh_params = [UR10_PARAMS["d1"], UR10_PARAMS["a2"], UR10_PARAMS["a3"], UR10_PARAMS["d4"], UR10_PARAMS["d5"], UR10_PARAMS["d6"]]
+
+    K = OffsetWristKinematics(dh_params, lower_limits, upper_limits, verbose=True)
 
     # from Universal_Robots_ROS2_Description/config/initial_positions.yaml
     # shoulder_pan_joint: 0.0
@@ -210,8 +192,8 @@ if __name__ == "__main__":
 
     config = {"Shoulder": "Left", "Wrist": "Up"}
     for q in [q1,q2,q3]:
-        pose = K.fk(q)
-        success_list, ik_sol_list = K.ik(pose)
+        fk_success, fk_sol = K.fk(q)
+        success_list, ik_sol_list = K.ik(fk_sol)
 
         sol_id, ik_sol = K.select_sol_by_config(success_list, ik_sol_list, config)
 
