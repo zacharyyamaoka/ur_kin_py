@@ -4,6 +4,10 @@
 # The following parameters for UR robots are taken from the following website:
 # https://www.universal-robots.com/articles/ur/application-installation/dh-parameters-for-calculations-of-kinematics-and-dynamics/
 
+def dh_dict_to_list(dh_dict: dict) -> list:
+    return [dh_dict[key] for key in ["d1", "a2", "a3", "d4", "d5", "d6"]]
+
+
 UR10_PARAMS = {
     "d1": 0.1273,
     "a2": -0.612,

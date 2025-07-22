@@ -24,7 +24,8 @@ def check_ik_fk_consistency(K: OffsetWristKinematics, upper_limits: np.ndarray, 
         assert fk_success
 
         success_list, ik_sol_list = K.ik(fk_sol)
-        ik_success, ik_sol = K.select_sol_by_id(success_list, ik_sol_list, 0)
+        random_id = np.random.randint(0, 8)
+        ik_success, ik_sol = K.select_sol_by_id(success_list, ik_sol_list, random_id)
         if not ik_success:
             failed_count += 1
             continue # don't check fk below if ik failed

@@ -13,25 +13,18 @@ from ur_kin_py.offset_wrist_kinematics import OffsetWristKinematics, IK_SOLUTION
 from ur_kin_py.offset_wrist_dh_params import UR5e_PARAMS, UR10_PARAMS
 from pinocchio.visualize import MeshcatVisualizer
 from ur_kin_py.pin_helper import random_q_config
+from pin_utils.meshcat_client import MeshcatClient
 
 mesh_dir = "/home/bam/python_ws/ur_kin_py/" # should be parent directory for mesh file name
-urdf_model_path = "/home/bam/python_ws/ur_kin_py/ur_description/urdf/ur5e.xacro" 
+xacro_path = "/home/bam/python_ws/ur_kin_py/ur_description/urdf/ur5e.xacro" 
 
-doc = XacroDoc.from_file(urdf_model_path)
-with doc.temp_urdf_file_path() as path:
+meshcat_client = MeshcatClient.from_xacro(xacro_path, mesh_dir)
 
-    model, collision_model, visual_model = pin.buildModelsFromUrdf(path, mesh_dir)
-    data = model.createData()
-
-viz = MeshcatVisualizer(model, collision_model, visual_model)
-viz.initViewer(open=True)
-viz.loadViewerModel()
-viz.display(pin.neutral(model))
 time.sleep(1)
 
-frame_id = model.getFrameId('ee_link')
-viz.displayFrames(True, [frame_id], axis_length=0.2, axis_width=3)
-viz.updateFrames()
+# frame_id = model.getFrameId('ee_link')
+# viz.displayFrames(True, [frame_id], axis_length=0.2, axis_width=3)
+# viz.updateFrames()
 
 dh_params = [UR5e_PARAMS["d1"], UR5e_PARAMS["a2"], UR5e_PARAMS["a3"], UR5e_PARAMS["d4"], UR5e_PARAMS["d5"], UR5e_PARAMS["d6"]]
 K = OffsetWristKinematics(dh_params, use_tool0=True, verbose=False)

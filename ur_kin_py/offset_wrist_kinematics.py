@@ -14,7 +14,6 @@ class OffsetWristKinematics():
     def __init__(self, dh_params: list,
                  lower_limits=[-3.14]*6,
                  upper_limits=[3.14]*6,
-                 joint_reflect=[],
                  use_tool0=True,
                  verbose=False):
         
@@ -26,7 +25,6 @@ class OffsetWristKinematics():
         assert len(lower_limits) == 6
         assert len(upper_limits) == 6
 
-        self.joint_reflect = joint_reflect
         self.use_tool0 = use_tool0
         self.verbose = verbose
 
